@@ -10,10 +10,12 @@ app.post('/run-tests', async (req, res) => {
 
   let browser;
   try {
+    console.log('launching chromium...');
     browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     });
+    console.log('chromium launched');
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });

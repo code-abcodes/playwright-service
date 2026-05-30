@@ -12,8 +12,15 @@ app.post('/run-tests', async (req, res) => {
   try {
     console.log('launching chromium...');
     browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    headless: true,
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-zygote',
+        '--single-process'
+    ]
     });
     console.log('chromium launched');
     const context = await browser.newContext();

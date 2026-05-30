@@ -5,6 +5,7 @@ app.use(express.json());
 
 app.post('/run-tests', async (req, res) => {
   const { url, suiteId } = req.body;
+  console.log(`run-tests called: url=${url} suiteId=${suiteId}`);
   if (!url) return res.status(400).json({ error: 'url required' });
 
   let browser;

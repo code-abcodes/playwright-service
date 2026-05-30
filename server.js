@@ -11,17 +11,8 @@ app.post('/run-tests', async (req, res) => {
   let browser;
   try {
     console.log('launching chromium...');
-    browser = await chromium.launch({
-    headless: true,
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-zygote',
-        '--single-process'
-    ]
-    });
+    const wsEndpoint = `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`;
+    browser = await chromium.connectOverCDP(wsEndpoint);
     console.log('chromium launched');
     const context = await browser.newContext();
     const page = await context.newPage();

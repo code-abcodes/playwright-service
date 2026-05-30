@@ -140,10 +140,13 @@ async function runTodoSuite(page) {
 }
 
 // ── Platformer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 1) ──────────────────────
+// ── Platformer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 1) ──────────────────────
 async function runPlatformerSuite(page) {
   const results = [];
 
+  // Test 1: canvas exists
   try {
+    await page.waitForSelector('canvas', { timeout: 10000 });
     const hasCanvas = await page.locator('canvas').count() > 0;
     results.push({
       id: 'canvas_element_present', name: 'canvas element exists', passed: hasCanvas, weight: 20,
@@ -153,13 +156,18 @@ async function runPlatformerSuite(page) {
     results.push({ id: 'canvas_element_present', name: 'canvas element exists', passed: false, weight: 20, detail: e.message });
   }
 
+  // Test 2: clicking something starts the game (canvas changes)
   try {
-    const startBtn = page.locator('button, #start, .start-btn, .start-button, canvas').first();
     const beforeShot = await page.screenshot();
-    await startBtn.click();
-    await page.waitForTimeout(1000);
+    const btnCount = await page.locator('button').count();
+    if (btnCount > 0) {
+      await page.locator('button').first().click();
+    } else {
+      await page.locator('canvas').first().click();
+    }
+    await page.waitForTimeout(1500);
     const afterShot = await page.screenshot();
-    const passed = beforeShot.length !== afterShot.length || !beforeShot.equals(afterShot);
+    const passed = !beforeShot.equals(afterShot);
     results.push({
       id: 'game_responds_to_start', name: 'clicking start produces visible change', passed, weight: 25,
       detail: passed ? 'page changed after clicking start' : 'no visible change after clicking start'
@@ -168,16 +176,23 @@ async function runPlatformerSuite(page) {
     results.push({ id: 'game_responds_to_start', name: 'clicking start produces visible change', passed: false, weight: 25, detail: e.message });
   }
 
+  // Test 3: HUD exists — generic selectors covering any reasonable implementation
   try {
-    const scoreEl = await page.locator('#score, .score, [data-score], #lives, .lives, #health, .health').count();
+    const hudEl = await page.locator(
+      '#score-display, #lives-display, #health-bar, #health-display, ' +
+      '#score, #lives, #health, .score, .lives, .health, ' +
+      '[id*="score"], [id*="lives"], [id*="health"], [id*="hud"], ' +
+      '[class*="score"], [class*="lives"], [class*="health"], [class*="hud"]'
+    ).count();
     results.push({
-      id: 'score_or_lives_display', name: 'score or lives display exists', passed: scoreEl > 0, weight: 20,
-      detail: scoreEl > 0 ? 'found score/lives display element' : 'no score/lives/health element found'
+      id: 'score_or_lives_display', name: 'score or lives display exists', passed: hudEl > 0, weight: 20,
+      detail: hudEl > 0 ? 'found HUD display element' : 'no score/lives/health element found'
     });
   } catch (e) {
     results.push({ id: 'score_or_lives_display', name: 'score or lives display exists', passed: false, weight: 20, detail: e.message });
   }
 
+  // Test 4: game runs 5 seconds without crash
   try {
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
@@ -191,8 +206,9 @@ async function runPlatformerSuite(page) {
     results.push({ id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed: false, weight: 20, detail: e.message });
   }
 
+  // Test 5: page loads
   try {
-    const pageLoaded = await page.locator('canvas, body').count() > 0;
+    const pageLoaded = await page.locator('body').count() > 0;
     results.push({
       id: 'page_loads', name: 'page loads without errors', passed: pageLoaded, weight: 15,
       detail: pageLoaded ? 'page loaded successfully' : 'page did not load'

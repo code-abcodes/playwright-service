@@ -70,15 +70,18 @@ async function runTodoSuite(page) {
 
   // input_field_present — 15 pts
   try {
-    const input = page.locator("input[type='text'], input[placeholder], #task-input, .task-input, [data-testid='task-input']").first();
-    const count = await input.count();
+    const count = await page.locator(
+      "input[type='text'], input[type='search'], input[placeholder], " +
+      "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']), " +
+      "#task-input, .task-input, [data-testid='task-input']"
+    ).count();
     const passed = count > 0;
     results.push({
       id: 'input_field_present',
       name: 'A task input field is present on the page',
       passed,
       weight: 15,
-      detail: passed ? 'input field found' : 'no input field found'
+      detail: passed ? `input field found (${count} match(es))` : 'no input field found with any known selector'
     });
   } catch (e) {
     results.push({ id: 'input_field_present', name: 'A task input field is present on the page', passed: false, weight: 15, detail: e.message });
@@ -86,26 +89,35 @@ async function runTodoSuite(page) {
 
   // can_add_task — 25 pts
   try {
-    const input = page.locator("input[type='text'], input[placeholder], #task-input, .task-input").first();
-    await input.fill('Buy groceries from Shoprite');
-    // Try submit button first, fall back to Enter
-    const submitBtn = page.locator("button[type='submit'], #add-btn, .add-btn, button").first();
-    const btnCount = await submitBtn.count();
-    if (btnCount > 0) {
-      await submitBtn.click();
+    const input = page.locator(
+      "input[type='text'], input[type='search'], input[placeholder], " +
+      "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']), " +
+      "#task-input, .task-input"
+    ).first();
+
+    const inputCount = await input.count();
+    if (inputCount === 0) {
+      results.push({ id: 'can_add_task', name: 'Typing a task and submitting adds it to the list', passed: false, weight: 25, detail: 'no input field found to type into' });
     } else {
-      await input.press('Enter');
+      await input.fill('Buy groceries from Shoprite');
+      const submitBtn = page.locator("button[type='submit'], #add-btn, .add-btn, button").first();
+      const btnCount = await submitBtn.count();
+      if (btnCount > 0) {
+        await submitBtn.click();
+      } else {
+        await input.press('Enter');
+      }
+      await page.waitForTimeout(500);
+      const bodyText = await page.locator('body').innerText();
+      const passed = bodyText.includes('Buy groceries from Shoprite');
+      results.push({
+        id: 'can_add_task',
+        name: 'Typing a task and submitting adds it to the list',
+        passed,
+        weight: 25,
+        detail: passed ? 'task text found in page' : 'task text not found after submit'
+      });
     }
-    await page.waitForTimeout(500);
-    const bodyText = await page.locator('body').innerText();
-    const passed = bodyText.includes('Buy groceries from Shoprite');
-    results.push({
-      id: 'can_add_task',
-      name: 'Typing a task and submitting adds it to the list',
-      passed,
-      weight: 25,
-      detail: passed ? 'task text found in page' : 'task text not found after submit'
-    });
   } catch (e) {
     results.push({ id: 'can_add_task', name: 'Typing a task and submitting adds it to the list', passed: false, weight: 25, detail: e.message });
   }
@@ -166,36 +178,46 @@ async function runTodoSuite(page) {
 }
 
 // ── Platformer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 1) ──────────────────────
-// ── Platformer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 1) ──────────────────────
 async function runPlatformerSuite(page) {
   const results = [];
 
-  // Test 1: canvas exists
+  // Test 1: canvas exists — use count() not waitForSelector (count never checks visibility)
   try {
-    await page.waitForSelector('canvas', { timeout: 10000 });
-    const hasCanvas = await page.locator('canvas').count() > 0;
+    const count = await page.locator('canvas').count();
+    const passed = count > 0;
     results.push({
-      id: 'canvas_element_present', name: 'canvas element exists', passed: hasCanvas, weight: 20,
-      detail: hasCanvas ? 'canvas element found' : 'no canvas element found'
+      id: 'canvas_element_present',
+      name: 'canvas element exists',
+      passed,
+      weight: 20,
+      detail: passed ? `canvas element found (${count})` : 'no canvas element found'
     });
   } catch (e) {
     results.push({ id: 'canvas_element_present', name: 'canvas element exists', passed: false, weight: 20, detail: e.message });
   }
 
-  // Test 2: clicking something starts the game (canvas changes)
+  // Test 2: clicking something starts the game
   try {
     const beforeShot = await page.screenshot();
     const btnCount = await page.locator('button').count();
+    const canvasCount = await page.locator('canvas').count();
+
     if (btnCount > 0) {
       await page.locator('button').first().click();
+    } else if (canvasCount > 0) {
+      // dispatchEvent bypasses Playwright's visibility check
+      await page.locator('canvas').first().dispatchEvent('click');
     } else {
-      await page.locator('canvas').first().click();
+      await page.locator('body').click();
     }
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
     const afterShot = await page.screenshot();
     const passed = !beforeShot.equals(afterShot);
     results.push({
-      id: 'game_responds_to_start', name: 'clicking start produces visible change', passed, weight: 25,
+      id: 'game_responds_to_start',
+      name: 'clicking start produces visible change',
+      passed,
+      weight: 25,
       detail: passed ? 'page changed after clicking start' : 'no visible change after clicking start'
     });
   } catch (e) {
@@ -261,9 +283,17 @@ async function runRoguelikeSuite(page) {
   }
 
   try {
-    const startBtn = page.locator('button, #new-game, #start, .new-game, canvas').first();
     const beforeShot = await page.screenshot();
-    await startBtn.click();
+    const btnCount = await page.locator('button, #new-game, #start, .new-game').count();
+    const canvasCount = await page.locator('canvas').count();
+
+    if (btnCount > 0) {
+      await page.locator('button, #new-game, #start, .new-game').first().click();
+    } else if (canvasCount > 0) {
+      await page.locator('canvas').first().dispatchEvent('click');
+    } else {
+      await page.locator('body').click();
+    }
     await page.waitForTimeout(1000);
     const afterShot = await page.screenshot();
     const passed = !beforeShot.equals(afterShot);
@@ -350,9 +380,17 @@ async function runMultiplayerSuite(page) {
   }
 
   try {
-    const startBtn = page.locator('button, #start, #connect, #play, .play-btn, canvas').first();
     const beforeShot = await page.screenshot();
-    await startBtn.click();
+    const btnCount = await page.locator('button, #start, #connect, #play, .play-btn').count();
+    const canvasCount = await page.locator('canvas').count();
+
+    if (btnCount > 0) {
+      await page.locator('button, #start, #connect, #play, .play-btn').first().click();
+    } else if (canvasCount > 0) {
+      await page.locator('canvas').first().dispatchEvent('click');
+    } else {
+      await page.locator('body').click();
+    }
     await page.waitForTimeout(1500);
     const afterShot = await page.screenshot();
     const passed = !beforeShot.equals(afterShot);

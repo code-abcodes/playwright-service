@@ -142,26 +142,55 @@ async function runTodoSuite(page, pageErrors = []) {
 
   // can_complete_task — 20 pts
   try {
-    const beforeHTML = await page.locator('body').innerHTML();
-    const target = page.locator('input[type="checkbox"], .task-item, #task-list li').first();
-    const targetCount = await target.count();
-    if (targetCount === 0) {
-      results.push({ id: 'can_complete_task', name: 'Clicking a task or its checkbox marks it complete', passed: false, weight: 20, detail: 'no task item found to click' });
-    } else {
-      await target.click();
+    // Add a fresh task specifically for this test so we know one exists
+    const input = page.locator('#task-input, input[type="text"]').first();
+    const inputCount = await input.count();
+    if (inputCount > 0) {
+      await input.fill('Task to complete');
+      const submitBtn = page.locator('#add-btn, button[type="submit"], .add-btn, button').first();
+      const btnCount = await submitBtn.count();
+      if (btnCount > 0) {
+        await submitBtn.click();
+      } else {
+        await input.press('Enter');
+      }
       await page.waitForTimeout(500);
-      const afterHTML = await page.locator('body').innerHTML();
+    }
+
+    // Now find a checkbox specifically — not just any li
+    const checkbox = page.locator('#task-list input[type="checkbox"], ul li input[type="checkbox"]').first();
+    const checkboxCount = await checkbox.count();
+
+    if (checkboxCount === 0) {
+      results.push({
+        id: 'can_complete_task',
+        name: 'Clicking a task or its checkbox marks it complete',
+        passed: false,
+        weight: 20,
+        detail: 'no checkbox found in task list'
+      });
+    } else {
+      const beforeHTML = await page.locator('#task-list, ul').first().innerHTML();
+      await checkbox.click();
+      await page.waitForTimeout(500);
+      const afterHTML = await page.locator('#task-list, ul').first().innerHTML();
       const passed = beforeHTML !== afterHTML;
       results.push({
         id: 'can_complete_task',
         name: 'Clicking a task or its checkbox marks it complete',
         passed,
         weight: 20,
-        detail: passed ? 'DOM changed after clicking task' : 'no DOM change after clicking task/checkbox'
+        detail: passed ? 'DOM changed after clicking checkbox' : 'no DOM change after clicking checkbox'
       });
     }
   } catch (e) {
-    results.push({ id: 'can_complete_task', name: 'Clicking a task or its checkbox marks it complete', passed: false, weight: 20, detail: e.message });
+    results.push({
+      id: 'can_complete_task',
+      name: 'Clicking a task or its checkbox marks it complete',
+      passed: false,
+      weight: 20,
+      detail: e.message
+    });
   }
 
   // app_does_not_crash_after_interaction — 15 pts

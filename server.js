@@ -17,24 +17,33 @@ app.post('/run-tests', async (req, res) => {
 
     const context = await browser.newContext();
     const page = await context.newPage();
+
+    // ── ATTACH ERROR COLLECTOR BEFORE NAVIGATION ──────────────────────────
+    const pageErrors = [];
+    page.on('pageerror', err => {
+      console.log('pageerror:', err.message);
+      pageErrors.push(err.message);
+    });
+    // ──────────────────────────────────────────────────────────────────────
+
     console.log('navigating to', url);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
     console.log('page loaded');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1500); // give JS time to run and potentially crash
 
     let results;
     switch (suiteId) {
       case 'js_game_platformer_v1':
-        results = await runPlatformerSuite(page);
+        results = await runPlatformerSuite(page, pageErrors);
         break;
       case 'js_game_roguelike_v1':
-        results = await runRoguelikeSuite(page);
+        results = await runRoguelikeSuite(page, pageErrors);
         break;
       case 'js_game_multiplayer_v1':
-        results = await runMultiplayerSuite(page);
+        results = await runMultiplayerSuite(page, pageErrors);
         break;
       default:
-        results = await runTodoSuite(page);
+        results = await runTodoSuite(page, pageErrors);
     }
 
     console.log('results:', JSON.stringify(results));
@@ -48,21 +57,24 @@ app.post('/run-tests', async (req, res) => {
 });
 
 // ── Todo Suite (JAVASCRIPT/WEB_DEVELOPMENT seq 1) ─────────────────────────────
-async function runTodoSuite(page) {
+async function runTodoSuite(page, pageErrors = []) {
   const results = [];
 
-  // page_loads_without_errors — 10 pts
+  // Wait for input to appear — handles any remaining JS init
   try {
-    const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
-    await page.waitForTimeout(1000);
-    const passed = errors.length === 0;
+    await page.waitForSelector('#task-input, input[type="text"]', { timeout: 3000 });
+  } catch (_) { /* will be reported per-test */ }
+
+  // page_loads_without_errors — 10 pts
+  // Uses errors collected from BEFORE navigation, not just from this moment
+  try {
+    const passed = pageErrors.length === 0;
     results.push({
       id: 'page_loads_without_errors',
       name: 'App page loads without JavaScript console errors',
       passed,
       weight: 10,
-      detail: passed ? 'no console errors on load' : `errors: ${errors.slice(0, 2).join(', ')}`
+      detail: passed ? 'no console errors on load' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
     results.push({ id: 'page_loads_without_errors', name: 'App page loads without JavaScript console errors', passed: false, weight: 10, detail: e.message });
@@ -70,18 +82,14 @@ async function runTodoSuite(page) {
 
   // input_field_present — 15 pts
   try {
-    const count = await page.locator(
-      "input[type='text'], input[type='search'], input[placeholder], " +
-      "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']), " +
-      "#task-input, .task-input, [data-testid='task-input']"
-    ).count();
+    const count = await page.locator('#task-input, input[type="text"], input[type="search"]').count();
     const passed = count > 0;
     results.push({
       id: 'input_field_present',
       name: 'A task input field is present on the page',
       passed,
       weight: 15,
-      detail: passed ? `input field found (${count} match(es))` : 'no input field found with any known selector'
+      detail: passed ? `input field found (${count})` : 'no input field found'
     });
   } catch (e) {
     results.push({ id: 'input_field_present', name: 'A task input field is present on the page', passed: false, weight: 15, detail: e.message });
@@ -89,18 +97,13 @@ async function runTodoSuite(page) {
 
   // can_add_task — 25 pts
   try {
-    const input = page.locator(
-      "input[type='text'], input[type='search'], input[placeholder], " +
-      "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']), " +
-      "#task-input, .task-input"
-    ).first();
-
-    const inputCount = await input.count();
+    const inputCount = await page.locator('#task-input, input[type="text"]').count();
     if (inputCount === 0) {
       results.push({ id: 'can_add_task', name: 'Typing a task and submitting adds it to the list', passed: false, weight: 25, detail: 'no input field found to type into' });
     } else {
+      const input = page.locator('#task-input, input[type="text"]').first();
       await input.fill('Buy groceries from Shoprite');
-      const submitBtn = page.locator("button[type='submit'], #add-btn, .add-btn, button").first();
+      const submitBtn = page.locator('#add-btn, button[type="submit"], .add-btn, button').first();
       const btnCount = await submitBtn.count();
       if (btnCount > 0) {
         await submitBtn.click();
@@ -124,8 +127,7 @@ async function runTodoSuite(page) {
 
   // task_list_container_present — 15 pts
   try {
-    const container = page.locator("ul, ol, #task-list, .task-list, [data-testid='task-list']").first();
-    const count = await container.count();
+    const count = await page.locator('#task-list, ul, ol, .task-list').count();
     const passed = count > 0;
     results.push({
       id: 'task_list_container_present',
@@ -141,34 +143,38 @@ async function runTodoSuite(page) {
   // can_complete_task — 20 pts
   try {
     const beforeHTML = await page.locator('body').innerHTML();
-    const target = page.locator("input[type='checkbox'], .task-item, li").first();
-    await target.click();
-    await page.waitForTimeout(500);
-    const afterHTML = await page.locator('body').innerHTML();
-    const passed = beforeHTML !== afterHTML;
-    results.push({
-      id: 'can_complete_task',
-      name: 'Clicking a task or its checkbox marks it complete',
-      passed,
-      weight: 20,
-      detail: passed ? 'DOM changed after clicking task' : 'no DOM change after clicking task/checkbox'
-    });
+    const target = page.locator('input[type="checkbox"], .task-item, #task-list li').first();
+    const targetCount = await target.count();
+    if (targetCount === 0) {
+      results.push({ id: 'can_complete_task', name: 'Clicking a task or its checkbox marks it complete', passed: false, weight: 20, detail: 'no task item found to click' });
+    } else {
+      await target.click();
+      await page.waitForTimeout(500);
+      const afterHTML = await page.locator('body').innerHTML();
+      const passed = beforeHTML !== afterHTML;
+      results.push({
+        id: 'can_complete_task',
+        name: 'Clicking a task or its checkbox marks it complete',
+        passed,
+        weight: 20,
+        detail: passed ? 'DOM changed after clicking task' : 'no DOM change after clicking task/checkbox'
+      });
+    }
   } catch (e) {
     results.push({ id: 'can_complete_task', name: 'Clicking a task or its checkbox marks it complete', passed: false, weight: 20, detail: e.message });
   }
 
   // app_does_not_crash_after_interaction — 15 pts
+  // Uses the shared pageErrors — catches crashes from ANY point in the session
   try {
-    const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
     await page.waitForTimeout(5000);
-    const passed = errors.length === 0;
+    const passed = pageErrors.length === 0;
     results.push({
       id: 'app_does_not_crash_after_interaction',
       name: 'App runs for 5 seconds after interaction without crashing',
       passed,
       weight: 15,
-      detail: passed ? 'no errors in 5 seconds' : `errors: ${errors.slice(0, 2).join(', ')}`
+      detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
     results.push({ id: 'app_does_not_crash_after_interaction', name: 'App runs for 5 seconds after interaction without crashing', passed: false, weight: 15, detail: e.message });
@@ -178,7 +184,7 @@ async function runTodoSuite(page) {
 }
 
 // ── Platformer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 1) ──────────────────────
-async function runPlatformerSuite(page) {
+async function runPlatformerSuite(page, pageErrors = []) {
   const results = [];
 
   // Test 1: canvas exists — use count() not waitForSelector (count never checks visibility)
@@ -242,13 +248,11 @@ async function runPlatformerSuite(page) {
 
   // Test 4: game runs 5 seconds without crash
   try {
-    const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
     await page.waitForTimeout(5000);
-    const passed = errors.length === 0;
+    const passed = pageErrors.length === 0;
     results.push({
       id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed, weight: 20,
-      detail: passed ? 'no errors in 5 seconds' : `errors: ${errors.slice(0, 2).join(', ')}`
+      detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
     results.push({ id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed: false, weight: 20, detail: e.message });
@@ -269,7 +273,7 @@ async function runPlatformerSuite(page) {
 }
 
 // ── Roguelike Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 2) ───────────────────────
-async function runRoguelikeSuite(page) {
+async function runRoguelikeSuite(page, pageErrors = []) {
   const results = [];
 
   try {
@@ -330,13 +334,11 @@ async function runRoguelikeSuite(page) {
   }
 
   try {
-    const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
     await page.waitForTimeout(5000);
-    const passed = errors.length === 0;
+    const passed = pageErrors.length === 0;
     results.push({
       id: 'game_runs_without_crash', name: 'game runs 5 seconds without crash', passed, weight: 10,
-      detail: passed ? 'no errors in 5 seconds' : `errors: ${errors.slice(0, 2).join(', ')}`
+      detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
     results.push({ id: 'game_runs_without_crash', name: 'game runs 5 seconds without crash', passed: false, weight: 10, detail: e.message });
@@ -356,7 +358,7 @@ async function runRoguelikeSuite(page) {
 }
 
 // ── Multiplayer Suite (JAVASCRIPT/GAME_DEVELOPMENT seq 3) ─────────────────────
-async function runMultiplayerSuite(page) {
+async function runMultiplayerSuite(page, pageErrors = []) {
   const results = [];
 
   try {
@@ -417,13 +419,11 @@ async function runMultiplayerSuite(page) {
   }
 
   try {
-    const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
     await page.waitForTimeout(3000);
-    const passed = errors.length === 0;
+    const passed = pageErrors.length === 0;
     results.push({
       id: 'no_connection_error', name: 'no connection errors after 3 seconds', passed, weight: 10,
-      detail: passed ? 'no errors in 3 seconds' : `errors: ${errors.slice(0, 2).join(', ')}`
+      detail: passed ? 'no errors in 3 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
     results.push({ id: 'no_connection_error', name: 'no connection errors after 3 seconds', passed: false, weight: 10, detail: e.message });

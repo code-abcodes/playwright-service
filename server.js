@@ -203,6 +203,7 @@ async function runTodoSuite(page, pageErrors = []) {
       name: 'App runs for 5 seconds after interaction without crashing',
       passed,
       weight: 15,
+      required: true,
       detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {

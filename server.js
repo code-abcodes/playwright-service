@@ -207,7 +207,7 @@ async function runTodoSuite(page, pageErrors = []) {
       detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
-    results.push({ id: 'app_does_not_crash_after_interaction', name: 'App runs for 5 seconds after interaction without crashing', passed: false, weight: 15, detail: e.message });
+    results.push({ id: 'app_does_not_crash_after_interaction', name: 'App runs for 5 seconds after interaction without crashing', passed: false, weight: 15, required: true, detail: e.message });
   }
 
   return results;
@@ -281,11 +281,11 @@ async function runPlatformerSuite(page, pageErrors = []) {
     await page.waitForTimeout(5000);
     const passed = pageErrors.length === 0;
     results.push({
-      id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed, weight: 20,
+      id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed, weight: 20, required: true,
       detail: passed ? 'no errors in 5 seconds' : `errors: ${pageErrors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
-    results.push({ id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed: false, weight: 20, detail: e.message });
+    results.push({ id: 'game_runs_five_seconds', name: 'game runs 5 seconds without crash', passed: false, weight: 20, required: true, detail: e.message });
   }
 
   // Test 5: page loads

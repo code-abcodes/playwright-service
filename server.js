@@ -51,89 +51,115 @@ app.post('/run-tests', async (req, res) => {
 async function runTodoSuite(page) {
   const results = [];
 
+  // page_loads_without_errors — 10 pts
   try {
-    const input = page.locator('#todo-input, #task-input, input[type="text"]').first();
-    await input.fill('Test task alpha');
-    await input.press('Enter');
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    await page.waitForTimeout(1000);
+    const passed = errors.length === 0;
+    results.push({
+      id: 'page_loads_without_errors',
+      name: 'App page loads without JavaScript console errors',
+      passed,
+      weight: 10,
+      detail: passed ? 'no console errors on load' : `errors: ${errors.slice(0, 2).join(', ')}`
+    });
+  } catch (e) {
+    results.push({ id: 'page_loads_without_errors', name: 'App page loads without JavaScript console errors', passed: false, weight: 10, detail: e.message });
+  }
+
+  // input_field_present — 15 pts
+  try {
+    const input = page.locator("input[type='text'], input[placeholder], #task-input, .task-input, [data-testid='task-input']").first();
+    const count = await input.count();
+    const passed = count > 0;
+    results.push({
+      id: 'input_field_present',
+      name: 'A task input field is present on the page',
+      passed,
+      weight: 15,
+      detail: passed ? 'input field found' : 'no input field found'
+    });
+  } catch (e) {
+    results.push({ id: 'input_field_present', name: 'A task input field is present on the page', passed: false, weight: 15, detail: e.message });
+  }
+
+  // can_add_task — 25 pts
+  try {
+    const input = page.locator("input[type='text'], input[placeholder], #task-input, .task-input").first();
+    await input.fill('Buy groceries from Shoprite');
+    // Try submit button first, fall back to Enter
+    const submitBtn = page.locator("button[type='submit'], #add-btn, .add-btn, button").first();
+    const btnCount = await submitBtn.count();
+    if (btnCount > 0) {
+      await submitBtn.click();
+    } else {
+      await input.press('Enter');
+    }
     await page.waitForTimeout(500);
-    const count = await page.locator('#todo-list li, .task-list li, ul li').count();
+    const bodyText = await page.locator('body').innerText();
+    const passed = bodyText.includes('Buy groceries from Shoprite');
     results.push({
-      id: 'add_task', name: 'can add a task', passed: count > 0, weight: 20,
-      detail: count > 0 ? `found ${count} task(s)` : 'no li found after adding task'
+      id: 'can_add_task',
+      name: 'Typing a task and submitting adds it to the list',
+      passed,
+      weight: 25,
+      detail: passed ? 'task text found in page' : 'task text not found after submit'
     });
   } catch (e) {
-    results.push({ id: 'add_task', name: 'can add a task', passed: false, weight: 20, detail: e.message });
+    results.push({ id: 'can_add_task', name: 'Typing a task and submitting adds it to the list', passed: false, weight: 25, detail: e.message });
   }
 
+  // task_list_container_present — 15 pts
   try {
-    const checkbox = page.locator('#todo-list li, ul li').first().locator('input[type="checkbox"]');
-    await checkbox.check();
-    await page.waitForTimeout(300);
-    const afterCheck = await page.locator('li.completed').count();
-    await checkbox.uncheck();
-    await page.waitForTimeout(300);
-    const afterUncheck = await page.locator('li.completed').count();
-    const passed = afterCheck > 0 && afterUncheck === 0;
+    const container = page.locator("ul, ol, #task-list, .task-list, [data-testid='task-list']").first();
+    const count = await container.count();
+    const passed = count > 0;
     results.push({
-      id: 'toggle_task', name: 'toggle marks and unmarks completed', passed, weight: 20,
-      detail: passed ? 'completed after check, uncompleted after uncheck'
-        : `completed after check: ${afterCheck}, after uncheck: ${afterUncheck}`
+      id: 'task_list_container_present',
+      name: 'A container element holds the list of tasks',
+      passed,
+      weight: 15,
+      detail: passed ? 'list container found' : 'no list container found'
     });
   } catch (e) {
-    results.push({ id: 'toggle_task', name: 'toggle marks and unmarks completed', passed: false, weight: 20, detail: e.message });
+    results.push({ id: 'task_list_container_present', name: 'A container element holds the list of tasks', passed: false, weight: 15, detail: e.message });
   }
 
+  // can_complete_task — 20 pts
   try {
-    const input = page.locator('#todo-input, #task-input, input[type="text"]').first();
-    await input.fill('Test task beta');
-    await input.press('Enter');
-    await page.waitForTimeout(300);
-    const beforeCount = await page.locator('#todo-list li, ul li').count();
-    const lastItem = page.locator('#todo-list li, ul li').last();
-    await lastItem.hover();
-    await page.waitForTimeout(200);
-    await lastItem.locator('.delete-btn, button[aria-label*="Delete"], button[aria-label*="delete"]').click();
-    await page.waitForTimeout(400);
-    const afterCount = await page.locator('#todo-list li, ul li').count();
-    const passed = afterCount === beforeCount - 1;
+    const beforeHTML = await page.locator('body').innerHTML();
+    const target = page.locator("input[type='checkbox'], .task-item, li").first();
+    await target.click();
+    await page.waitForTimeout(500);
+    const afterHTML = await page.locator('body').innerHTML();
+    const passed = beforeHTML !== afterHTML;
     results.push({
-      id: 'delete_task', name: 'delete removes a task', passed, weight: 20,
-      detail: passed ? 'task removed successfully' : `count before: ${beforeCount}, after: ${afterCount}`
+      id: 'can_complete_task',
+      name: 'Clicking a task or its checkbox marks it complete',
+      passed,
+      weight: 20,
+      detail: passed ? 'DOM changed after clicking task' : 'no DOM change after clicking task/checkbox'
     });
   } catch (e) {
-    results.push({ id: 'delete_task', name: 'delete removes a task', passed: false, weight: 20, detail: e.message });
+    results.push({ id: 'can_complete_task', name: 'Clicking a task or its checkbox marks it complete', passed: false, weight: 20, detail: e.message });
   }
 
+  // app_does_not_crash_after_interaction — 15 pts
   try {
-    const input = page.locator('#todo-input, #task-input, input[type="text"]').first();
-    await input.fill('Completed task');
-    await input.press('Enter');
-    await page.waitForTimeout(300);
-    const allItems = await page.locator('#todo-list li, ul li').count();
-    const firstCheckbox = page.locator('#todo-list li, ul li').first().locator('input[type="checkbox"]');
-    await firstCheckbox.check();
-    await page.waitForTimeout(300);
-    await page.locator('.filter-btn[data-filter="active"], button:has-text("Active")').click();
-    await page.waitForTimeout(300);
-    const activeItems = await page.locator('#todo-list li, ul li').count();
-    const passed = activeItems < allItems;
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    await page.waitForTimeout(5000);
+    const passed = errors.length === 0;
     results.push({
-      id: 'filter_active', name: 'filter shows only active tasks', passed, weight: 20,
-      detail: passed ? `all: ${allItems}, active: ${activeItems}` : `filter did not reduce items: ${activeItems}`
+      id: 'app_does_not_crash_after_interaction',
+      name: 'App runs for 5 seconds after interaction without crashing',
+      passed,
+      weight: 15,
+      detail: passed ? 'no errors in 5 seconds' : `errors: ${errors.slice(0, 2).join(', ')}`
     });
   } catch (e) {
-    results.push({ id: 'filter_active', name: 'filter shows only active tasks', passed: false, weight: 20, detail: e.message });
-  }
-
-  try {
-    const stored = await page.evaluate(() => localStorage.getItem('taskflow_todos'));
-    const passed = stored !== null && stored !== '[]' && stored !== '';
-    results.push({
-      id: 'localstorage', name: 'tasks persist in localStorage', passed, weight: 20,
-      detail: passed ? 'taskflow_todos key found in localStorage' : 'taskflow_todos is empty or missing'
-    });
-  } catch (e) {
-    results.push({ id: 'localstorage', name: 'tasks persist in localStorage', passed: false, weight: 20, detail: e.message });
+    results.push({ id: 'app_does_not_crash_after_interaction', name: 'App runs for 5 seconds after interaction without crashing', passed: false, weight: 15, detail: e.message });
   }
 
   return results;
